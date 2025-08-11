@@ -53,7 +53,10 @@ public class TransactionServiceImpl implements TransactionService {
     }
 
     private TransactionDto transferFromAccount(String debit, String credit, BigDecimal amount) {
-        AccountEntity accountEntity = accountRepository.findById(debit).orElseThrow();
+        AccountEntity accountEntity = accountRepository.findByAccountNumber(debit);
+        if (accountEntity == null) {
+            throw new AccountNotActiveException("Account not found or inactive");
+        }
 
         if (!accountEntity.getStatus().equals(AccountStatus.ACTIVE))
             throw new AccountNotActiveException("Account should be active");
@@ -62,7 +65,7 @@ public class TransactionServiceImpl implements TransactionService {
         checkCustomerTransactions(customerEntity);
 
         if (accountEntity.getBalance().compareTo(amount) < 0)
-            throw new NotEnoughFundsException("you should have enough amount of oney");
+            throw new NotEnoughFundsException("you should have enough amount of money");
 
         if (accountEntity.getBalance().compareTo(limitProperties.getMinAcceptableAccountBalance()) < 0)
             throw new LimitExceedsException("your transfer exceeds the limit");
@@ -117,87 +120,7 @@ public class TransactionServiceImpl implements TransactionService {
     @Override
     public Page<TransactionDto> getTransactionsByCustomerId(Integer customerId, Integer page, Integer size) {
         Pageable pageable = PageRequest.of(page, size);
-        Page<TransactionEntity> transactionEntityPage = new Page<TransactionEntity>() {
-            @Override
-            public int getTotalPages() {
-                return 0;
-            }
-
-            @Override
-            public long getTotalElements() {
-                return 0;
-            }
-
-            @Override
-            public <U> Page<U> map(Function<? super TransactionEntity, ? extends U> converter) {
-                return null;
-            }
-
-            @Override
-            public int getNumber() {
-                return 0;
-            }
-
-            @Override
-            public int getSize() {
-                return 0;
-            }
-
-            @Override
-            public int getNumberOfElements() {
-                return 0;
-            }
-
-            @Override
-            public List<TransactionEntity> getContent() {
-                return List.of();
-            }
-
-            @Override
-            public boolean hasContent() {
-                return false;
-            }
-
-            @Override
-            public Sort getSort() {
-                return null;
-            }
-
-            @Override
-            public boolean isFirst() {
-                return false;
-            }
-
-            @Override
-            public boolean isLast() {
-                return false;
-            }
-
-            @Override
-            public boolean hasNext() {
-                return false;
-            }
-
-            @Override
-            public boolean hasPrevious() {
-                return false;
-            }
-
-            @Override
-            public Pageable nextPageable() {
-                return null;
-            }
-
-            @Override
-            public Pageable previousPageable() {
-                return null;
-            }
-
-            @Override
-            public Iterator<TransactionEntity> iterator() {
-                return null;
-            }
-        };
+        Page<TransactionEntity> transactionEntityPage = transactionRepository.findByAccount_Customer_Id(customerId, pageable);
         List<TransactionDto> transactionDtoList = transactionMapper.getTransactionDtoList(transactionEntityPage.getContent());
         return new PageImpl<>(transactionDtoList, pageable, transactionEntityPage.getTotalElements());
     }

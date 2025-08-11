@@ -20,6 +20,7 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.security.crypto.password.PasswordEncoder;
 
 import java.time.LocalDate;
 
@@ -29,6 +30,7 @@ import java.time.LocalDate;
 public class UserServiceImpl implements UserService {
 
     private final UserRepository userRepository;
+    private final PasswordEncoder passwordEncoder;
 
     private UserResponse convertToUserResponse(UserEntity userEntity) {
         if (userEntity == null) {
@@ -52,7 +54,7 @@ public class UserServiceImpl implements UserService {
 
         UserEntity userEntity = UserEntity.builder()
                 .username(request.getUsername())
-                .password(request.getPassword())
+                .password(passwordEncoder.encode(request.getPassword()))
                 .role(role)
                 .status(UserStatus.ACTIVE)
                 .registrationDate(LocalDate.now())
@@ -121,12 +123,12 @@ public class UserServiceImpl implements UserService {
                     return new ResourceNotFoundException("User not found with username: " + username);
                 });
 
-        if (!userEntity.getPassword().equals(request.getOldPassword())) {
+        if (!passwordEncoder.matches(request.getOldPassword(), userEntity.getPassword())) {
             log.warn("Password change failed for user '{}': Incorrect old password.", username);
             throw new UnauthorizedException("Incorrect old password for user: " + username);
         }
 
-        if (userEntity.getPassword().equals(request.getNewPassword())) {
+        if (passwordEncoder.matches(request.getNewPassword(), userEntity.getPassword())) {
             log.warn("Password change failed for user '{}': New password is the same as old password.", username);
             return PasswordChangeResponse.builder()
                     .success(false)
@@ -134,7 +136,7 @@ public class UserServiceImpl implements UserService {
                     .build();
         }
 
-        userEntity.setPassword(request.getNewPassword());
+        userEntity.setPassword(passwordEncoder.encode(request.getNewPassword()));
         userRepository.save(userEntity);
 
         log.info("Password changed successfully for user: {}", username);

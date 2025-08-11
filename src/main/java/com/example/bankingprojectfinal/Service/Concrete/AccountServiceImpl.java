@@ -83,39 +83,38 @@ public class AccountServiceImpl implements AccountService {
 
     @Override
     public void activateAccount(String accountNumber) {
-        AccountEntity accountEntity = accountRepository.findById(accountNumber)
-                .orElseThrow(() -> new AccountNotFoundException("Account with number " + accountNumber + " not found."));
+        AccountEntity accountEntity = accountRepository.findByAccountNumber(accountNumber);
+        if (accountEntity == null) {
+            throw new AccountNotFoundException("Account with number " + accountNumber + " not found.");
+        }
 
         if (!accountEntity.getStatus().equals(AccountStatus.NEW)) {
             log.warn("Account {} cannot be activated. Current status: {}. Only NEW accounts can be activated.",
                     accountNumber, accountEntity.getStatus());
-            throw new InvalidAccountActivationException("Accoutn has already been activated");
+            throw new InvalidAccountActivationException("Account has already been activated");
         }
 
         accountEntity.setStatus(AccountStatus.ACTIVE);
         accountRepository.save(accountEntity);
 
         log.info("Account {} successfully activated.", accountNumber);
-
-
     }
 
     @Override
     @Transactional
     public void depositAccount(String accountNumber, BigDecimal amount) {
 
-        //1 is the given accountNumber valid
-        AccountEntity accountEntity = accountRepository.findById(accountNumber)
-                .orElseThrow(() -> new AccountNotFoundException("Account with number " + accountNumber + " does not exist."));
+        AccountEntity accountEntity = accountRepository.findByAccountNumber(accountNumber);
+        if (accountEntity == null) {
+            throw new AccountNotFoundException("Account with number " + accountNumber + " does not exist.");
+        }
 
         log.debug("Account found for deposit: {} with current balance: {}", accountNumber, accountEntity.getBalance());
-        //2 we are checking the given amount is correct or not
         if (amount == null || amount.compareTo(BigDecimal.ZERO) <= 0) {
             log.error("Invalid deposit amount: {}. Amount must be positive.", amount);
             throw new InvalidDepositAmount("Deposit amount must be positive.");
         }
-        // 3 we are checking the status of account
-        if (!accountEntity.getStatus().equals(AccountStatus.EXPIRED)) {
+        if (!accountEntity.getStatus().equals(AccountStatus.ACTIVE)) {
             log.warn("Deposit failed for account {}. Account is not ACTIVE. Current status: {}",
                     accountNumber, accountEntity.getStatus());
             throw new InactiveAccountDepositException("Account should be active");
@@ -125,9 +124,7 @@ public class AccountServiceImpl implements AccountService {
         accountEntity.setBalance(newBalance);
         accountRepository.save(accountEntity);
 
-        log.info("Deposited {} to account {}. Previous balance was {} New balance: {}", amount, previousBalance, accountNumber, newBalance);
-
-
+        log.info("Deposited {} to account {}. Previous balance was {} New balance: {}", amount, accountNumber, previousBalance, newBalance);
     }
 
     public Page<AccountResponse> getAccountsByCustomerId(Integer customerId, Integer page, Integer size) {

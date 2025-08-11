@@ -12,7 +12,7 @@ import java.math.BigDecimal;
 import java.util.List;
 
 @Repository
-public interface AccountRepository extends JpaRepository<AccountEntity, String> {
+public interface AccountRepository extends JpaRepository<AccountEntity, Integer> {
     Integer countByCustomer_IdAndStatusIn(Integer customerId, List<AccountStatus> accountStatusList);
     List<AccountEntity> findByCustomer_IdAndStatus(Integer customerId, AccountStatus accountStatus);
     Page<AccountEntity> findByCustomer_IdAndStatusIn(Integer customerId, List<AccountStatus> accountStatusList, Pageable pageable);
