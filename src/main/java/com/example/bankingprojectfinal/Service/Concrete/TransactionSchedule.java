@@ -78,11 +78,11 @@ public class TransactionSchedule {
 
         BigDecimal monthlyTotal = transactionRepository.getMonthlyTotalByCustomer(customerEntity.getId(), startDate, endDate);
 
-        if (monthlyTotal != null && monthlyTotal.compareTo(limitProperties.getDailyTransactionLimit()) > 0) {
+        if (monthlyTotal != null && monthlyTotal.compareTo(limitProperties.getMonthlyTransactionSuspectLimit()) > 0) {
             customerEntity.setStatus(CustomerStatus.SUSPECTED);
             customerRepository.save(customerEntity);
             log.warn("Customer ID {} detected as SUSPECTED due to monthly transaction total {} exceeding limit {}.",
-                    customerEntity.getId(), monthlyTotal, limitProperties.getDailyTransactionLimit());
+                    customerEntity.getId(), monthlyTotal, limitProperties.getMonthlyTransactionSuspectLimit());
         }
     }
     private void updateAccountBalance(String accountNumber, BigDecimal amount, boolean isCredit) {
@@ -92,11 +92,11 @@ public class TransactionSchedule {
             throw new IllegalArgumentException("Invalid account number format. Expected 20 digits.");
         }
 
-        AccountEntity account = accountRepository.findById(accountNumber)
-                .orElseThrow(() -> {
-                    log.error("Account {} not found.", accountNumber);
-                    return new AccountNotActiveException("Account not found for processing.");
-                });
+        AccountEntity account = accountRepository.findByAccountNumber(accountNumber);
+        if (account == null) {
+            log.error("Account {} not found.", accountNumber);
+            throw new AccountNotActiveException("Account not found for processing.");
+        }
 
         if (!account.getStatus().equals(AccountStatus.ACTIVE)) {
             log.error("Account {} is not active.", accountNumber);

@@ -4,6 +4,7 @@ import com.example.bankingprojectfinal.Model.Entity.CustomerEntity;
 import com.example.bankingprojectfinal.Model.Entity.TransactionEntity;
 import com.example.bankingprojectfinal.Model.Enums.TransactionStatus;
 import org.mapstruct.Mapper;
+import org.mapstruct.Mapping;
 
 
 import java.math.BigDecimal;
@@ -14,19 +15,11 @@ import java.util.Random;
 
 @Mapper(componentModel = "spring")
 public interface TransactionMapper {
+    @Mapping(source = "debitAccountNumber", target = "debit")
+    @Mapping(source = "creditAccountNumber", target = "credit")
     TransactionDto mapToTransactionDto(TransactionEntity transactionEntity);
 
-    default TransactionEntity buildTransactionEntity(CustomerEntity customerEntity, String debit, String credit, BigDecimal amount) {
-        return TransactionEntity.builder()
-                .transactionId(generateTransactionId())
-                .customer(customerEntity)
-                .debitAccountNumber(debit)
-                .creditAccountNumber(credit)
-                .transactionDate(LocalDate.now())
-                .amount(amount)
-                .status(TransactionStatus.PENDING)
-                .build();
-    }
+    // Transaction entities are constructed in services to ensure proper locking and status handling.
 
     private String generateTransactionId() {
         Random random = new Random();
