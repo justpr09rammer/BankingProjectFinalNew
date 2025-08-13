@@ -40,6 +40,7 @@ public class TransactionServiceImpl implements TransactionService {
     AccountRepository accountRepository;
     CardRepository cardRepository;
     LimitProperties limitProperties;
+    com.example.bankingprojectfinal.Service.Security.RateLimiterService rateLimiterService;
 
     @Override
     public TransactionDto transfer(String debit, String credit, BigDecimal amount) {
@@ -52,6 +53,8 @@ public class TransactionServiceImpl implements TransactionService {
         if (amount == null || amount.compareTo(BigDecimal.ZERO) <= 0) {
             throw new IllegalArgumentException("Amount must be greater than zero");
         }
+        String userKey = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication() != null ? org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication().getName() : "anonymous";
+        rateLimiterService.ensureWithinLimit(userKey, "transfer", 5, java.time.Duration.ofMinutes(1));
         return transferFromAccount(debit, credit, amount);
     }
 
