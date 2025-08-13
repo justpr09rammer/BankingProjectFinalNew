@@ -33,6 +33,7 @@ import java.util.function.Function;
 @Slf4j
 @RequiredArgsConstructor
 @FieldDefaults(level = AccessLevel.PRIVATE, makeFinal = true)
+@org.springframework.transaction.annotation.Transactional
 public class TransactionServiceImpl implements TransactionService {
     TransactionRepository transactionRepository;
     TransactionMapper transactionMapper;
@@ -42,32 +43,67 @@ public class TransactionServiceImpl implements TransactionService {
 
     @Override
     public TransactionDto transfer(String debit, String credit, BigDecimal amount) {
-        checkCreditNumber(credit);
-
-        if (debit.length() == 16) {
-            return transferFromAccount(debit, credit, amount);
-        } else if (debit.length() == 20) {
-            return transferFromAccount(debit, credit, amount);
-        } else
-            throw new IllegalArgumentException("Wrong input for debit");
+        if (debit == null || credit == null) {
+            throw new IllegalArgumentException("Account numbers must not be null");
+        }
+        if (!debit.matches("\\d{20}") || !credit.matches("\\d{20}")) {
+            throw new IllegalArgumentException("Debit and credit account numbers must be 20 digits");
+        }
+        if (amount == null || amount.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new IllegalArgumentException("Amount must be greater than zero");
+        }
+        return transferFromAccount(debit, credit, amount);
     }
 
     private TransactionDto transferFromAccount(String debit, String credit, BigDecimal amount) {
-        AccountEntity accountEntity = accountRepository.findById(debit).orElseThrow();
+        // Lock accounts in a consistent order to avoid deadlocks
+        String first = debit.compareTo(credit) <= 0 ? debit : credit;
+        String second = debit.compareTo(credit) <= 0 ? credit : debit;
 
-        if (!accountEntity.getStatus().equals(AccountStatus.ACTIVE))
-            throw new AccountNotActiveException("Account should be active");
+        AccountEntity firstLocked = accountRepository.lockByAccountNumber(first)
+                .orElseThrow(() -> new AccountNotActiveException("Account not found: " + first));
+        AccountEntity secondLocked = accountRepository.lockByAccountNumber(second)
+                .orElseThrow(() -> new AccountNotActiveException("Account not found: " + second));
 
-        CustomerEntity customerEntity = accountEntity.getCustomer();
+        AccountEntity debitAccount = debit.equals(first) ? firstLocked : secondLocked;
+        AccountEntity creditAccount = credit.equals(second) ? secondLocked : firstLocked;
+
+        if (!debitAccount.getStatus().equals(AccountStatus.ACTIVE)) {
+            throw new AccountNotActiveException("Debit account should be active");
+        }
+        if (!creditAccount.getStatus().equals(AccountStatus.ACTIVE)) {
+            throw new AccountNotActiveException("Credit account should be active");
+        }
+
+        CustomerEntity customerEntity = debitAccount.getCustomer();
         checkCustomerTransactions(customerEntity);
 
-        if (accountEntity.getBalance().compareTo(amount) < 0)
-            throw new NotEnoughFundsException("you should have enough amount of oney");
+        if (debitAccount.getBalance().compareTo(amount) < 0) {
+            throw new NotEnoughFundsException("Not enough funds");
+        }
+        if (debitAccount.getBalance().subtract(amount)
+                .compareTo(limitProperties.getMinAcceptableAccountBalance()) < 0) {
+            throw new LimitExceedsException("Transfer would drop balance below minimum acceptable");
+        }
 
-        if (accountEntity.getBalance().compareTo(limitProperties.getMinAcceptableAccountBalance()) < 0)
-            throw new LimitExceedsException("your transfer exceeds the limit");
+        debitAccount.setBalance(debitAccount.getBalance().subtract(amount));
+        creditAccount.setBalance(creditAccount.getBalance().add(amount));
+        accountRepository.save(debitAccount);
+        accountRepository.save(creditAccount);
 
-        return createTransaction(customerEntity, debit, credit, amount);
+        TransactionEntity transactionEntity = TransactionEntity.builder()
+                .customer(customerEntity)
+                .account(debitAccount)
+                .debitAccountNumber(debit)
+                .creditAccountNumber(credit)
+                .transactionDate(LocalDate.now())
+                .amount(amount)
+                .status(com.example.bankingprojectfinal.Model.Enums.TransactionStatus.COMPLETED)
+                .transactionType(com.example.bankingprojectfinal.Model.Enums.TransactionType.TRANSFER)
+                .build();
+
+        transactionRepository.save(transactionEntity);
+        return transactionMapper.getTransactionDto(transactionEntity);
     }
 //
 //    private TransactionDto transferFromAccountWhenCardFailed(CustomerEntity customerEntity, String credit, BigDecimal amount) {
@@ -101,103 +137,15 @@ public class TransactionServiceImpl implements TransactionService {
     }
 
     private void checkCreditNumber(String credit) {
-        if (credit.length() != 20 && credit.length() != 16)
-            throw new IllegalArgumentException("Wrong input for credit");
+        if (credit == null || !credit.matches("\\d{20}"))
+            throw new IllegalArgumentException("Wrong input for credit; must be 20 digits");
     }
 
-    private TransactionDto createTransaction(CustomerEntity customerEntity,
-                                             String debit, String credit,
-                                             BigDecimal amount) {
-        TransactionEntity transactionEntity = transactionMapper.buildTransactionEntity(customerEntity, debit, credit, amount);
-
-        transactionRepository.save(transactionEntity);
-        return transactionMapper.getTransactionDto(transactionEntity);
-    }
 
     @Override
     public Page<TransactionDto> getTransactionsByCustomerId(Integer customerId, Integer page, Integer size) {
         Pageable pageable = PageRequest.of(page, size);
-        Page<TransactionEntity> transactionEntityPage = new Page<TransactionEntity>() {
-            @Override
-            public int getTotalPages() {
-                return 0;
-            }
-
-            @Override
-            public long getTotalElements() {
-                return 0;
-            }
-
-            @Override
-            public <U> Page<U> map(Function<? super TransactionEntity, ? extends U> converter) {
-                return null;
-            }
-
-            @Override
-            public int getNumber() {
-                return 0;
-            }
-
-            @Override
-            public int getSize() {
-                return 0;
-            }
-
-            @Override
-            public int getNumberOfElements() {
-                return 0;
-            }
-
-            @Override
-            public List<TransactionEntity> getContent() {
-                return List.of();
-            }
-
-            @Override
-            public boolean hasContent() {
-                return false;
-            }
-
-            @Override
-            public Sort getSort() {
-                return null;
-            }
-
-            @Override
-            public boolean isFirst() {
-                return false;
-            }
-
-            @Override
-            public boolean isLast() {
-                return false;
-            }
-
-            @Override
-            public boolean hasNext() {
-                return false;
-            }
-
-            @Override
-            public boolean hasPrevious() {
-                return false;
-            }
-
-            @Override
-            public Pageable nextPageable() {
-                return null;
-            }
-
-            @Override
-            public Pageable previousPageable() {
-                return null;
-            }
-
-            @Override
-            public Iterator<TransactionEntity> iterator() {
-                return null;
-            }
-        };
+        Page<TransactionEntity> transactionEntityPage = transactionRepository.findByAccount_Customer_Id(customerId, pageable);
         List<TransactionDto> transactionDtoList = transactionMapper.getTransactionDtoList(transactionEntityPage.getContent());
         return new PageImpl<>(transactionDtoList, pageable, transactionEntityPage.getTotalElements());
     }
